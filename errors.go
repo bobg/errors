@@ -1,27 +1,27 @@
+// Package errors is a drop-in replacement for the stdlib errors package.
+// It adds an error-wrapping API and stack traces.
 package errors
 
 import (
-	stderrors "errors"
 	"fmt"
 	"runtime"
+	"strings"
 )
 
-var ErrUnsupported = stderrors.ErrUnsupported
-
-func As(err error, target interface{}) bool { return stderrors.As(err, target) }
-func Is(err, target error) bool             { return stderrors.Is(err, target) }
-func Join(errs ...error) error              { return stderrors.Join(errs...) }
-func New(text string) error                 { return stderrors.New(text) }
-func Unwrap(err error) error                { return stderrors.Unwrap(err) }
+func Newf(format string, args ...any) error {
+	return dowrap(fmt.Errorf(format, args...), "")
+}
 
 // Wrapped is a wrapped error containing a message and a stack trace.
 type Wrapped struct {
-	err   error
+	err   error // This can be nil, in which case msg is the entire error message.
 	msg   string
 	stack []uintptr
 }
 
-func (w Wrapped) Unwrap() error { return w.err }
+func (w Wrapped) Unwrap() error {
+	return w.err
+}
 
 func (w Wrapped) Error() string {
 	if w.msg == "" {
@@ -32,7 +32,7 @@ func (w Wrapped) Error() string {
 
 // Stack returns a slice of [Frame]
 // representing the call stack at the point [Wrap] was called.
-func (w Wrapped) Stack() []Frame {
+func (w Wrapped) Stack() Frames {
 	var (
 		rframes = runtime.CallersFrames(w.stack)
 		result  []Frame
@@ -56,10 +56,58 @@ func (w Wrapped) Stack() []Frame {
 	return result
 }
 
+// Stack returns the stack trace from an error.
+// If the error is nil or is not a [Wrapped] error,
+// Stack returns nil.
+func Stack(e error) Frames {
+	if e == nil {
+		return nil
+	}
+
+	var w Wrapped
+	if !As(e, &w) {
+		return nil
+	}
+	return w.Stack()
+}
+
+// Frames is a slice of [Frame].
+type Frames []Frame
+
+func (fs Frames) String() string {
+	var sb strings.Builder
+	for _, f := range fs {
+		fmt.Fprintln(&sb, f)
+	}
+	return sb.String()
+}
+
 // Frame is a stack frame.
 type Frame struct {
 	Function, File string
 	Line           int
+}
+
+func (f Frame) String() string {
+	if f.File != "" && f.Function != "" {
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "%s:", f.File)
+		if f.Line != 0 {
+			fmt.Fprintf(&sb, "%d:", f.Line)
+		}
+		fmt.Fprintf(&sb, " %s", f.Function)
+		return sb.String()
+	}
+
+	if f.Function != "" {
+		return f.Function
+	}
+
+	if f.File != "" && f.Line != 0 {
+		return fmt.Sprintf("%s:%d: (unknown function)", f.File, f.Line)
+	}
+
+	return "(unknown)"
 }
 
 // Wrap creates a [Wrapped] error.
@@ -86,6 +134,6 @@ func dowrap(err error, msg string) error {
 
 // Wrapf creates a [Wrapped] error.
 // It is shorthand for Wrap(err, fmt.Sprintf(format, args...)).
-func Wrapf(err error, format string, args ...interface{}) error {
+func Wrapf(err error, format string, args ...any) error {
 	return dowrap(err, fmt.Sprintf(format, args...))
 }

@@ -3,23 +3,27 @@ package errors
 import (
 	"errors"
 	"path/filepath"
+	"slices"
 	"testing"
-
-	"github.com/bobg/go-generics/v3/slices"
 )
 
 func TestWrap(t *testing.T) {
 	e := func() error {
 		return Wrap(ErrUnsupported, "foo")
 	}()
-	if !Is(e, ErrUnsupported) {
-		t.Errorf("got %v, want %v", e, ErrUnsupported)
-	}
 
-	const wantstr = "foo: unsupported operation"
-	if got := e.Error(); got != wantstr {
-		t.Errorf("got %q, want %q", got, wantstr)
-	}
+	t.Run("Is", func(t *testing.T) {
+		if !Is(e, ErrUnsupported) {
+			t.Errorf("got %v, want %v", e, ErrUnsupported)
+		}
+	})
+
+	t.Run("ErrStr", func(t *testing.T) {
+		const wantstr = "foo: unsupported operation"
+		if got := e.Error(); got != wantstr {
+			t.Errorf("got %q, want %q", got, wantstr)
+		}
+	})
 
 	var w Wrapped
 	if !errors.As(e, &w) {
@@ -27,11 +31,11 @@ func TestWrap(t *testing.T) {
 	}
 
 	s := w.Stack()
-	s = slices.Map(s, func(f Frame) Frame {
-		f.File = filepath.Base(f.File)
-		f.Line = 0
-		return f
-	})
+	for i := range s {
+		s[i].File = filepath.Base(s[i].File)
+		s[i].Line = 0
+	}
+
 	if len(s) < 3 {
 		t.Fatalf("got %d frames, want at least 3", len(s))
 	}
@@ -48,5 +52,11 @@ func TestWrap(t *testing.T) {
 	}}
 	if !slices.Equal(s, want) {
 		t.Errorf("got %v, want %v", s, want)
+	}
+
+	str := s.String()
+	const wantstr = "errors_test.go: github.com/bobg/errors.TestWrap.func1\nerrors_test.go: github.com/bobg/errors.TestWrap\ntesting.go: testing.tRunner\n"
+	if str != wantstr {
+		t.Errorf("got %q, want %q", str, wantstr)
 	}
 }
