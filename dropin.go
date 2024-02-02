@@ -1,6 +1,6 @@
 package errors
 
-import stderrors "errors"
+import "errors"
 
 // ErrUnsupported indicates that a requested operation cannot be performed,
 // because it is unsupported. For example, a call to [os.Link] when using a
@@ -15,7 +15,7 @@ import stderrors "errors"
 //
 // Functions and methods should document the cases in which an error
 // wrapping this will be returned.
-var ErrUnsupported = stderrors.ErrUnsupported
+var ErrUnsupported = errors.ErrUnsupported
 
 // As finds the first error in err's tree that matches target, and if one is found, sets
 // target to that error value and returns true. Otherwise, it returns false.
@@ -35,7 +35,7 @@ var ErrUnsupported = stderrors.ErrUnsupported
 // As panics if target is not a non-nil pointer to either a type that implements
 // error, or to any interface type.
 func As(err error, target any) bool {
-	return stderrors.As(err, target)
+	return errors.As(err, target)
 }
 
 // Is reports whether any error in err's tree matches target.
@@ -56,7 +56,7 @@ func As(err error, target any) bool {
 // an example in the standard library. An Is method should only shallowly
 // compare err and the target and not call Unwrap on either.
 func Is(err, target error) bool {
-	return stderrors.Is(err, target)
+	return errors.Is(err, target)
 }
 
 // Join returns an error that wraps the given errors.
@@ -68,13 +68,13 @@ func Is(err, target error) bool {
 //
 // A non-nil error returned by Join implements the Unwrap() []error method.
 func Join(errs ...error) error {
-	return stderrors.Join(errs...)
+	return errors.Join(errs...)
 }
 
 // New returns an error that formats as the given text.
 // Each call to New returns a distinct error value even if the text is identical.
 func New(text string) error {
-	return dowrap(stderrors.New(text), "")
+	return dowrap(errors.New(text))
 }
 
 // Unwrap returns the result of calling the Unwrap method on err, if err's
@@ -84,5 +84,5 @@ func New(text string) error {
 // Unwrap only calls a method of the form "Unwrap() error".
 // In particular Unwrap does not unwrap errors returned by [Join].
 func Unwrap(err error) error {
-	return stderrors.Unwrap(err)
+	return errors.Unwrap(err)
 }

@@ -8,31 +8,31 @@ import (
 	"strings"
 )
 
+// Newf creates a new error with the given format string and arguments,
+// formatted as with [fmt.Errorf].
+// The result is a [Wrapped] error containing the message and a stack trace.
+// The format specified %w works as in fmt.Errorf.
 func Newf(format string, args ...any) error {
-	return dowrap(fmt.Errorf(format, args...), "")
+	return dowrap(fmt.Errorf(format, args...))
 }
 
 // Wrapped is a wrapped error containing a message and a stack trace.
 type Wrapped struct {
 	err   error // This can be nil, in which case msg is the entire error message.
-	msg   string
 	stack []uintptr
 }
 
-func (w Wrapped) Unwrap() error {
+func (w *Wrapped) Unwrap() error {
 	return w.err
 }
 
-func (w Wrapped) Error() string {
-	if w.msg == "" {
-		return w.err.Error()
-	}
-	return w.msg + ": " + w.err.Error()
+func (w *Wrapped) Error() string {
+	return w.err.Error()
 }
 
 // Stack returns a slice of [Frame]
 // representing the call stack at the point [Wrap] was called.
-func (w Wrapped) Stack() Frames {
+func (w *Wrapped) Stack() Frames {
 	var (
 		rframes = runtime.CallersFrames(w.stack)
 		result  []Frame
@@ -64,7 +64,7 @@ func Stack(e error) Frames {
 		return nil
 	}
 
-	var w Wrapped
+	var w *Wrapped
 	if !As(e, &w) {
 		return nil
 	}
@@ -114,20 +114,24 @@ func (f Frame) String() string {
 // It wraps the given error and attaches the given message, plus the call stack.
 // If err is nil, Wrap returns nil.
 func Wrap(err error, msg string) error {
-	return dowrap(err, msg)
-}
-
-func dowrap(err error, msg string) error {
 	if err == nil {
 		return nil
+	}
+	return dowrap(fmt.Errorf("%s: %w", msg, err))
+}
+
+func dowrap(err error) error {
+	var w *Wrapped
+	if As(err, &w) {
+		// err already contains a stack trace, no need to further decorate it
+		return err
 	}
 
 	const maxdepth = 32
 	var pcs [maxdepth]uintptr
-	n := runtime.Callers(3, pcs[:]) // 3 skips the call to runtime.Callers, the call to dowrap (this function), and the call to Wrap or Wrapf that got us here.
-	return Wrapped{
+	n := runtime.Callers(3, pcs[:]) // skip runtime.Callers, dowrap, and the Wrap/Wrapf/New/Newf call that got us here.
+	return &Wrapped{
 		err:   err,
-		msg:   msg,
 		stack: pcs[:n],
 	}
 }
@@ -135,5 +139,11 @@ func dowrap(err error, msg string) error {
 // Wrapf creates a [Wrapped] error.
 // It is shorthand for Wrap(err, fmt.Sprintf(format, args...)).
 func Wrapf(err error, format string, args ...any) error {
-	return dowrap(err, fmt.Sprintf(format, args...))
+	if err == nil {
+		return nil
+	}
+
+	format += ": %w"
+	args = append(args, err)
+	return dowrap(fmt.Errorf(format, args...))
 }
