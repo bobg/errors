@@ -11,6 +11,11 @@ func TestWalk(t *testing.T) {
 		t.Errorf("Walk(nil) = %v, want nil", err)
 	}
 
+	testWalkHelper(t, true)
+	testWalkHelper(t, false)
+}
+
+func testWalkHelper(t *testing.T, throwError bool) {
 	var (
 		e1 = New("1")
 		e2 = New("2")
@@ -21,9 +26,10 @@ func TestWalk(t *testing.T) {
 		e3 = Join(e1, e2)
 		e4 = Wrap(e3, "4")
 		e5 = Wrap(e4, "5")
+
+		got []int
 	)
 
-	var got []int
 	err := Walk(e5, func(e error) error {
 		switch e {
 		case e1:
@@ -37,6 +43,9 @@ func TestWalk(t *testing.T) {
 		case e5:
 			got = append(got, 5)
 		case e1a:
+			if throwError {
+				return fmt.Errorf("e1a")
+			}
 			got = append(got, -1)
 		case e2a:
 			got = append(got, -2)
@@ -45,11 +54,20 @@ func TestWalk(t *testing.T) {
 		}
 		return nil
 	})
-	if err != nil {
+	if !throwError && err != nil {
 		t.Fatal(err)
 	}
+	if throwError && err == nil {
+		t.Error("did not get expected error")
+	}
 
-	want := []int{5, 4, 3, 1, -1, 2, -2}
+	var want []int
+	if throwError {
+		want = []int{5, 4, 3, 1}
+	} else {
+		want = []int{5, 4, 3, 1, -1, 2, -2}
+	}
+
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %#v, want %#v", got, want)
 	}
