@@ -1,5 +1,5 @@
 // Package errors is a drop-in replacement for the stdlib errors package.
-// It adds an error-wrapping API and stack traces.
+// It adds error-wrapping functions, stack traces, error-tree traversal.
 package errors
 
 import (

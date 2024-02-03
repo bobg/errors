@@ -8,6 +8,7 @@
 This is errors,
 a drop-in replacement for [the standard Go errors package](https://pkg.go.dev/errors).
 It adds an API for wrapping an error with a caller-specified message and a snapshot of the call stack.
+It also adds a function for traversing an error’s tree of wrapped sub-errors.
 
 This module began as a fork of the venerable [github.com/pkg/errors](https://github.com/pkg/errors).
 That module’s GitHub repository has been frozen for a long time and has not kept up with changes to the standard library.
