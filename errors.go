@@ -142,7 +142,7 @@ func Wrap(err error, msg string) error {
 	return dowrap(fmt.Errorf("%s: %w", msg, err))
 }
 
-// Wrap creates a wrapped error.
+// Wrapf creates a wrapped error.
 // It wraps the given error and attaches the message that results from formatting format with args.
 // It may also attach a stack trace,
 // but only if err doesn't already contain one.
