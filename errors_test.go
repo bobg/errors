@@ -198,7 +198,6 @@ func TestStack(t *testing.T) {
 	}
 
 	ss := s.String()
-	t.Log(ss)
 	if ok, _ := regexp.MatchString(`/errors_test\.go:\d+: github\.com/bobg/errors_test\.TestStack`, ss); !ok {
 		t.Error("got no match, want match")
 	}
