@@ -19,7 +19,7 @@ func TestAs(t *testing.T) {
 
 	e2 := fmt.Errorf("bar")
 	if errors.As(e2, &w) {
-		t.Errorf("got true, want false")
+		t.Errorf("fmt.Errorf error should not be *Wrapped")
 	}
 }
 
@@ -28,10 +28,10 @@ func TestIs(t *testing.T) {
 	e2 := errors.Wrap(e, "bar")
 
 	if !errors.Is(e2, e) {
-		t.Errorf("got false, want true")
+		t.Errorf("wrapped error fails Is test")
 	}
 	if !errors.Is(e, e) {
-		t.Errorf("got false, want true")
+		t.Errorf("wrapped error fails Is-self test")
 	}
 }
 
@@ -131,6 +131,9 @@ func TestWrap(t *testing.T) {
 	}
 	if !errors.Is(e2, e) {
 		t.Errorf("got false, want true")
+	}
+	if _, ok := e2.(*errors.Wrapped); ok {
+		t.Errorf("double-wrapped error should not be *Wrapped")
 	}
 }
 

@@ -14,3 +14,50 @@ That module’s GitHub repository has been frozen for a long time and has not ke
 (For example, it does not export [the Join function](https://pkg.go.dev/errors#Join) added in Go 1.20.)
 
 This is now a brand-new implementation with a different API.
+
+## Usage
+
+When you write code that handles an error from a function call by returning the error to your caller,
+it’s a good practice to “wrap” the error with context from your callsite first.
+The Go standard library lets you do this like so:
+
+```go
+if err := doThing(...); err != nil {
+  return fmt.Errorf("doing thing: %w", err)
+}
+```
+
+The resulting error still “is” `err`
+(in the sense of [errors.Is](https://pkg.go.dev/errors#Is))
+but is now wrapped with context about how `err` was produced −
+to wit, “doing thing.”
+
+This library lets you do the same thing like this:
+
+```go
+if err := doThing(...); err != nil {
+  return errors.Wrap(err, "doing thing")
+}
+```
+
+This approach has a couple of benefits over wrapping with `fmt.Errorf` and `%w`.
+First, as a convenience, `Wrap` returns `nil` if its error argument is `nil`.
+So if `doThing` is the last thing that happens in your function,
+you can safely write:
+
+```go
+err := doThing(...)
+return errors.Wrap(err, "doing thing")
+```
+
+This will correctly return `nil` when `doThing` succeeds.
+
+Second, errors produced by this package contain a snapshot of the call stack from the moment the error was created.
+This can be retrieved with the `Stack` function.
+
+Note that diligent error wrapping often makes the stack trace superfluous.
+As errors work their way up the stack
+it’s possible to decorate them with enough extra context
+to understand exactly where and why the error occurred.
+But you can’t always rely on diligent error wrapping,
+and you can’t always wait for an error to propagate all the way up the call stack before reporting it.
