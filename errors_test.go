@@ -1,251 +1,204 @@
-package errors
+package errors_test
 
 import (
-	"errors"
 	"fmt"
-	"io"
-	"reflect"
+	"regexp"
+	"strings"
 	"testing"
+
+	"github.com/bobg/errors"
 )
 
-func TestNew(t *testing.T) {
-	tests := []struct {
-		err  string
-		want error
-	}{
-		{"", fmt.Errorf("")},
-		{"foo", fmt.Errorf("foo")},
-		{"foo", New("foo")},
-		{"string with format specifiers: %v", errors.New("string with format specifiers: %v")},
+func TestAs(t *testing.T) {
+	e := errors.New("foo")
+
+	var w *errors.Wrapped
+	if !errors.As(e, &w) {
+		t.Errorf("got %T, want *Wrapped", e)
 	}
 
-	for _, tt := range tests {
-		got := New(tt.err)
-		if got.Error() != tt.want.Error() {
-			t.Errorf("New.Error(): got: %q, want %q", got, tt.want)
-		}
+	e2 := fmt.Errorf("bar")
+	if errors.As(e2, &w) {
+		t.Errorf("fmt.Errorf error should not be *Wrapped")
 	}
 }
 
-func TestWrapNil(t *testing.T) {
-	got := Wrap(nil, "no error")
-	if got != nil {
-		t.Errorf("Wrap(nil, \"no error\"): got %#v, expected nil", got)
+func TestIs(t *testing.T) {
+	e := errors.New("foo")
+	e2 := errors.Wrap(e, "bar")
+
+	if !errors.Is(e2, e) {
+		t.Errorf("wrapped error fails Is test")
+	}
+	if !errors.Is(e, e) {
+		t.Errorf("wrapped error fails Is-self test")
+	}
+}
+
+func TestJoin(t *testing.T) {
+	e := errors.Join(nil, nil)
+	if e != nil {
+		t.Errorf("got %v, want nil", e)
+	}
+
+	var (
+		e1 = errors.New("foo")
+		e2 = errors.New("bar")
+	)
+
+	e = errors.Join(e1, e2)
+	if e.Error() != "foo\nbar" {
+		t.Errorf("got %q, want %q", e.Error(), "foo\nbar")
+	}
+
+	if !errors.Is(e, e1) {
+		t.Errorf("got false, want true")
+	}
+	if !errors.Is(e, e2) {
+		t.Errorf("got false, want true")
+	}
+}
+
+func TestNew(t *testing.T) {
+	e := errors.New("foo")
+	if e.Error() != "foo" {
+		t.Errorf("got %q, want %q", e.Error(), "foo")
+	}
+
+	s := errors.Stack(e)
+	if len(s) == 0 {
+		t.Errorf("got %v, want non-empty", s)
+	}
+}
+
+func TestNewf(t *testing.T) {
+	e := errors.Newf("foo %d", 17)
+	if e.Error() != "foo 17" {
+		t.Errorf("got %q, want %q", e.Error(), "foo 17")
+	}
+
+	s := errors.Stack(e)
+	if len(s) == 0 {
+		t.Errorf("got %v, want non-empty", s)
+	}
+
+	var (
+		e1 = errors.New("bar")
+		e2 = errors.New("baz")
+	)
+	e = errors.Newf("foo %d: %w, %w", 17, e1, e2)
+	if e.Error() != "foo 17: bar, baz" {
+		t.Errorf("got %q, want %q", e.Error(), "foo 17: bar, baz")
+	}
+	if !errors.Is(e, e1) {
+		t.Errorf("got false, want true")
+	}
+	if !errors.Is(e, e2) {
+		t.Errorf("got false, want true")
+	}
+}
+
+func TestUnwrap(t *testing.T) {
+	var (
+		e = errors.New("foo")
+		u = errors.Unwrap(e)
+	)
+
+	if u == nil {
+		t.Fatal("got nil, want non-nil")
+	}
+	if u.Error() != "foo" {
+		t.Errorf("got %q, want %q", u.Error(), "foo")
+	}
+
+	u2 := errors.Unwrap(u)
+	if u2 != nil {
+		t.Errorf("got %v, want nil", u2)
 	}
 }
 
 func TestWrap(t *testing.T) {
-	tests := []struct {
-		err     error
-		message string
-		want    string
-	}{
-		{io.EOF, "read error", "read error: EOF"},
-		{Wrap(io.EOF, "read error"), "client error", "client error: read error: EOF"},
+	e := errors.Wrap(nil, "foo")
+	if e != nil {
+		t.Errorf("got %v, want nil", e)
 	}
 
-	for _, tt := range tests {
-		got := Wrap(tt.err, tt.message).Error()
-		if got != tt.want {
-			t.Errorf("Wrap(%v, %q): got: %v, want %v", tt.err, tt.message, got, tt.want)
-		}
+	e = errors.New("foo")
+
+	e2 := errors.Wrap(e, "bar")
+	if e2.Error() != "bar: foo" {
+		t.Errorf("got %q, want %q", e2.Error(), "bar: foo")
 	}
-}
-
-type nilError struct{}
-
-func (nilError) Error() string { return "nil error" }
-
-func TestCause(t *testing.T) {
-	x := New("error")
-	tests := []struct {
-		err  error
-		want error
-	}{{
-		// nil error is nil
-		err:  nil,
-		want: nil,
-	}, {
-		// explicit nil error is nil
-		err:  (error)(nil),
-		want: nil,
-	}, {
-		// typed nil is nil
-		err:  (*nilError)(nil),
-		want: (*nilError)(nil),
-	}, {
-		// uncaused error is unaffected
-		err:  io.EOF,
-		want: io.EOF,
-	}, {
-		// caused error returns cause
-		err:  Wrap(io.EOF, "ignored"),
-		want: io.EOF,
-	}, {
-		err:  x, // return from errors.New
-		want: x,
-	}, {
-		WithMessage(nil, "whoops"),
-		nil,
-	}, {
-		WithMessage(io.EOF, "whoops"),
-		io.EOF,
-	}, {
-		WithStack(nil),
-		nil,
-	}, {
-		WithStack(io.EOF),
-		io.EOF,
-	}}
-
-	for i, tt := range tests {
-		got := Cause(tt.err)
-		if !reflect.DeepEqual(got, tt.want) {
-			t.Errorf("test %d: got %#v, want %#v", i+1, got, tt.want)
-		}
+	if !errors.Is(e2, e) {
+		t.Errorf("got false, want true")
 	}
-}
-
-func TestWrapfNil(t *testing.T) {
-	got := Wrapf(nil, "no error")
-	if got != nil {
-		t.Errorf("Wrapf(nil, \"no error\"): got %#v, expected nil", got)
+	if _, ok := e2.(*errors.Wrapped); ok {
+		t.Errorf("double-wrapped error should not be *Wrapped")
 	}
 }
 
 func TestWrapf(t *testing.T) {
-	tests := []struct {
-		err     error
-		message string
-		want    string
-	}{
-		{io.EOF, "read error", "read error: EOF"},
-		{Wrapf(io.EOF, "read error without format specifiers"), "client error", "client error: read error without format specifiers: EOF"},
-		{Wrapf(io.EOF, "read error with %d format specifier", 1), "client error", "client error: read error with 1 format specifier: EOF"},
+	e := errors.Wrapf(nil, "foo")
+	if e != nil {
+		t.Errorf("got %v, want nil", e)
 	}
 
-	for _, tt := range tests {
-		got := Wrapf(tt.err, tt.message).Error()
-		if got != tt.want {
-			t.Errorf("Wrapf(%v, %q): got: %v, want %v", tt.err, tt.message, got, tt.want)
-		}
-	}
-}
+	e = errors.New("foo")
 
-func TestErrorf(t *testing.T) {
-	tests := []struct {
-		err  error
-		want string
-	}{
-		{Errorf("read error without format specifiers"), "read error without format specifiers"},
-		{Errorf("read error with %d format specifier", 1), "read error with 1 format specifier"},
+	e2 := errors.New("bar")
+	e3 := errors.Wrapf(e, "baz %d: %w", 17, e2)
+	if e3.Error() != "baz 17: bar: foo" {
+		t.Errorf("got %q, want %q", e3.Error(), "baz 17: bar: foo")
 	}
 
-	for _, tt := range tests {
-		got := tt.err.Error()
-		if got != tt.want {
-			t.Errorf("Errorf(%v): got: %q, want %q", tt.err, got, tt.want)
-		}
+	if !errors.Is(e3, e2) {
+		t.Errorf("got false, want true")
+	}
+	if !errors.Is(e3, e) {
+		t.Errorf("got false, want true")
 	}
 }
 
-func TestWithStackNil(t *testing.T) {
-	got := WithStack(nil)
-	if got != nil {
-		t.Errorf("WithStack(nil): got %#v, expected nil", got)
-	}
-}
-
-func TestWithStack(t *testing.T) {
-	tests := []struct {
-		err  error
-		want string
-	}{
-		{io.EOF, "EOF"},
-		{WithStack(io.EOF), "EOF"},
+func TestStack(t *testing.T) {
+	if s := errors.Stack(nil); s != nil {
+		t.Errorf("got %v, want nil", s)
 	}
 
-	for _, tt := range tests {
-		got := WithStack(tt.err).Error()
-		if got != tt.want {
-			t.Errorf("WithStack(%v): got: %v, want %v", tt.err, got, tt.want)
-		}
-	}
-}
-
-func TestWithMessageNil(t *testing.T) {
-	got := WithMessage(nil, "no error")
-	if got != nil {
-		t.Errorf("WithMessage(nil, \"no error\"): got %#v, expected nil", got)
-	}
-}
-
-func TestWithMessage(t *testing.T) {
-	tests := []struct {
-		err     error
-		message string
-		want    string
-	}{
-		{io.EOF, "read error", "read error: EOF"},
-		{WithMessage(io.EOF, "read error"), "client error", "client error: read error: EOF"},
+	if s := errors.Stack(fmt.Errorf("foo")); s != nil {
+		t.Errorf("got %v, want nil", s)
 	}
 
-	for _, tt := range tests {
-		got := WithMessage(tt.err, tt.message).Error()
-		if got != tt.want {
-			t.Errorf("WithMessage(%v, %q): got: %q, want %q", tt.err, tt.message, got, tt.want)
-		}
-	}
-}
-
-func TestWithMessagefNil(t *testing.T) {
-	got := WithMessagef(nil, "no error")
-	if got != nil {
-		t.Errorf("WithMessage(nil, \"no error\"): got %#v, expected nil", got)
-	}
-}
-
-func TestWithMessagef(t *testing.T) {
-	tests := []struct {
-		err     error
-		message string
-		want    string
-	}{
-		{io.EOF, "read error", "read error: EOF"},
-		{WithMessagef(io.EOF, "read error without format specifier"), "client error", "client error: read error without format specifier: EOF"},
-		{WithMessagef(io.EOF, "read error with %d format specifier", 1), "client error", "client error: read error with 1 format specifier: EOF"},
+	e := errors.New("foo")
+	s := errors.Stack(e)
+	if len(s) == 0 {
+		t.Errorf("got %v, want non-empty", s)
 	}
 
-	for _, tt := range tests {
-		got := WithMessagef(tt.err, tt.message).Error()
-		if got != tt.want {
-			t.Errorf("WithMessage(%v, %q): got: %q, want %q", tt.err, tt.message, got, tt.want)
-		}
-	}
-}
-
-// errors.New, etc values are not expected to be compared by value
-// but the change in errors#27 made them incomparable. Assert that
-// various kinds of errors have a functional equality operator, even
-// if the result of that equality is always false.
-func TestErrorEquality(t *testing.T) {
-	vals := []error{
-		nil,
-		io.EOF,
-		errors.New("EOF"),
-		New("EOF"),
-		Errorf("EOF"),
-		Wrap(io.EOF, "EOF"),
-		Wrapf(io.EOF, "EOF%d", 2),
-		WithMessage(nil, "whoops"),
-		WithMessage(io.EOF, "whoops"),
-		WithStack(io.EOF),
-		WithStack(nil),
+	if len(s) < 2 {
+		t.Fatalf("got %d frames, want at least 2", len(s))
 	}
 
-	for i := range vals {
-		for j := range vals {
-			_ = vals[i] == vals[j] // mustn't panic
-		}
+	f0 := s[0]
+	if f0.Function != "github.com/bobg/errors_test.TestStack" {
+		t.Errorf("got %q, want %q", f0, "github.com/bobg/errors_test.TestStack")
+	}
+	if !strings.HasSuffix(f0.File, "/errors_test.go") {
+		t.Errorf("got %q, want suffix %q", f0.File, "/errors_test.go")
+	}
+	if f0.Line == 0 {
+		t.Error("got 0, want non-zero")
+	}
+
+	f1 := s[1]
+	if f1.Function != "testing.tRunner" {
+		t.Errorf("got %q, want %q", f1, "testing.tRunner")
+	}
+	if !strings.HasSuffix(f1.File, "/testing.go") {
+		t.Errorf("got %q, want suffix %q", f1.File, "/testing.go")
+	}
+
+	ss := s.String()
+	if ok, _ := regexp.MatchString(`/errors_test\.go:\d+: github\.com/bobg/errors_test\.TestStack`, ss); !ok {
+		t.Error("got no match, want match")
 	}
 }
