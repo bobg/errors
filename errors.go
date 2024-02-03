@@ -29,11 +29,49 @@ func (w *wrapped) Error() string {
 	return w.err.Error()
 }
 
-// Stack returns a slice of [Frame]
-// representing the call stack at the point [Wrap] was called.
-func (w *wrapped) Stack() Frames {
+// Stack implements the [Stacker] interface.
+func (w *wrapped) Stack() []uintptr {
+	return w.stack
+}
+
+func dowrap(err error) error {
+	var s Stacker
+	if As(err, &s) {
+		// err already contains a stack trace, no need to further decorate it
+		return err
+	}
+
+	const maxdepth = 32
+	var pcs [maxdepth]uintptr
+	n := runtime.Callers(3, pcs[:]) // 3 skips runtime.Callers, dowrap (this function), and the Wrap/Wrapf/New/Newf call that got us here.
+	return &wrapped{
+		err:   err,
+		stack: pcs[:n],
+	}
+}
+
+// Stacker is the interface implemented by errors with a stack trace.
+// Types wishing to implement Stacker can use [runtime.Callers] to get the call stack.
+type Stacker interface {
+	Stack() []uintptr
+}
+
+// Stack returns the stack trace from an error as a [Frames].
+// If the error is nil or does not contain a stack trace,
+// Stack returns nil.
+func Stack(e error) Frames {
+	if e == nil {
+		return nil
+	}
+
+	var s Stacker
+	if !As(e, &s) {
+		return nil
+	}
+
 	var (
-		rframes = runtime.CallersFrames(w.stack)
+		pcs     = s.Stack()
+		rframes = runtime.CallersFrames(pcs)
 		result  []Frame
 	)
 
@@ -53,42 +91,6 @@ func (w *wrapped) Stack() Frames {
 	}
 
 	return result
-}
-
-func dowrap(err error) error {
-	var s Stacker
-	if As(err, &s) {
-		// err already contains a stack trace, no need to further decorate it
-		return err
-	}
-
-	const maxdepth = 32
-	var pcs [maxdepth]uintptr
-	n := runtime.Callers(3, pcs[:]) // skip runtime.Callers, dowrap, and the Wrap/Wrapf/New/Newf call that got us here.
-	return &wrapped{
-		err:   err,
-		stack: pcs[:n],
-	}
-}
-
-// Stacker is the interface implemented by errors with a stack trace.
-type Stacker interface {
-	Stack() Frames
-}
-
-// Stack returns the stack trace from an error.
-// If the error is nil or does not contain a stack trace,
-// Stack returns nil.
-func Stack(e error) Frames {
-	if e == nil {
-		return nil
-	}
-
-	var s Stacker
-	if !As(e, &s) {
-		return nil
-	}
-	return s.Stack()
 }
 
 // Frames is a slice of [Frame].
