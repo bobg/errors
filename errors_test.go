@@ -72,7 +72,16 @@ func TestNew(t *testing.T) {
 }
 
 func TestNewf(t *testing.T) {
-	e := errors.Newf("foo %d", 17)
+	t.Run("Newf", func(t *testing.T) {
+		testNewf(t, errors.Newf)
+	})
+	t.Run("Errorf", func(t *testing.T) {
+		testNewf(t, errors.Errorf)
+	})
+}
+
+func testNewf(t *testing.T, f func(string, ...interface{}) error) {
+	e := f("foo %d", 17)
 	if e.Error() != "foo 17" {
 		t.Errorf("got %q, want %q", e.Error(), "foo 17")
 	}

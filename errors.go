@@ -16,6 +16,11 @@ func Newf(format string, args ...any) error {
 	return dowrap(fmt.Errorf(format, args...))
 }
 
+// Errorf is a synonym for [Newf].
+func Errorf(format string, args ...any) error {
+	return Newf(format, args...)
+}
+
 type wrapped struct {
 	err   error // This can be nil, in which case msg is the entire error message.
 	stack []uintptr
