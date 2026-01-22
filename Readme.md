@@ -12,7 +12,8 @@ It also adds a function for traversing an error’s tree of wrapped sub-errors.
 
 This module began as a fork of the venerable [github.com/pkg/errors](https://github.com/pkg/errors).
 That module’s GitHub repository has been frozen for a long time and has not kept up with changes to the standard library.
-(For example, it does not export [the Join function](https://pkg.go.dev/errors#Join) added in Go 1.20.)
+(For example, it does not export [the Join function](https://pkg.go.dev/errors#Join) added in Go 1.20,
+or [the AsType function](https://pkg.go.dev/errors#AsType) added in Go 1.26.)
 
 This is now a brand-new implementation with a different API.
 
