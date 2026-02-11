@@ -45,10 +45,6 @@ func Walk(e error, f func(error) error) error {
 // ErrSkip can be used by the callback to [Walk] to skip an error's subtree without aborting the walk.
 var ErrSkip = New("skip")
 
-type singleUnwrap interface {
-	Unwrap() error
-}
-
 type multiUnwrap interface {
 	Unwrap() []error
 }
