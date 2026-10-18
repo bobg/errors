@@ -26,12 +26,14 @@ func Walk(e error, f func(error) error) error {
 		return err
 	}
 
-	if u := Unwrap(e); u != nil {
-		return Walk(u, f)
-	}
+	switch e := e.(type) {
+	case Unwrapper:
+		if u := e.Unwrap(); u != nil {
+			return Walk(u, f)
+		}
 
-	if multi, ok := e.(multiUnwrap); ok {
-		uu := multi.Unwrap()
+	case MultiUnwrapper:
+		uu := e.Unwrap()
 		for _, ue := range uu {
 			if err := Walk(ue, f); err != nil {
 				return err
@@ -45,6 +47,20 @@ func Walk(e error, f func(error) error) error {
 // ErrSkip can be used by the callback to [Walk] to skip an error's subtree without aborting the walk.
 var ErrSkip = New("skip")
 
-type multiUnwrap interface {
+type Unwrapper interface {
+	Unwrap() error
+}
+
+type MultiUnwrapper interface {
 	Unwrap() []error
+}
+
+type Rewrapper interface {
+	error
+	Rewrap(error) error
+}
+
+type MultiRewrapper interface {
+	error
+	Rewrap(...error) error
 }
