@@ -30,13 +30,8 @@ type wrapped struct {
 	msg string
 }
 
-type stacked struct {
-	err   error
-	stack []uintptr
-}
-
 func (w wrapped) Error() string {
-	return w.err.Error()
+	return w.msg + ": " + w.err.Error()
 }
 
 func (w wrapped) Unwrap() error {
@@ -48,6 +43,11 @@ func (w wrapped) Rewrap(err error) error {
 		err: err,
 		msg: w.msg,
 	}
+}
+
+type stacked struct {
+	err   error
+	stack []uintptr
 }
 
 func (s stacked) Error() string {
