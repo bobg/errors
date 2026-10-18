@@ -80,7 +80,7 @@ func TestNewf(t *testing.T) {
 	})
 }
 
-func testNewf(t *testing.T, f func(string, ...interface{}) error) {
+func testNewf(t *testing.T, f func(string, ...any) error) {
 	e := f("foo %d", 17)
 	if e.Error() != "foo 17" {
 		t.Errorf("got %q, want %q", e.Error(), "foo 17")
