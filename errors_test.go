@@ -12,14 +12,14 @@ import (
 func TestAs(t *testing.T) {
 	e := errors.New("foo")
 
-	var w *errors.Wrapped
-	if !errors.As(e, &w) {
-		t.Errorf("got %T, want *Wrapped", e)
+	var s *errors.Stacked
+	if !errors.As(e, &s) {
+		t.Errorf("got %T, want *Stacked", e)
 	}
 
 	e2 := fmt.Errorf("bar")
-	if errors.As(e2, &w) {
-		t.Errorf("fmt.Errorf error should not be *Wrapped")
+	if errors.As(e2, &s) {
+		t.Errorf("fmt.Errorf error should not be *Stacked")
 	}
 }
 
@@ -141,8 +141,8 @@ func TestWrap(t *testing.T) {
 	if !errors.Is(e2, e) {
 		t.Errorf("got false, want true")
 	}
-	if _, ok := e2.(*errors.Wrapped); ok {
-		t.Errorf("double-wrapped error should not be *Wrapped")
+	if _, ok := e2.(*errors.Stacked); ok {
+		t.Errorf("double-stacked error should not be *Stacked")
 	}
 }
 
