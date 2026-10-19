@@ -102,6 +102,9 @@ func (f *singleFormatted) Unwrap() error {
 }
 
 func (f *singleFormatted) Rewrap(err error) error {
+	if err == f.args[f.idx] {
+		return f
+	}
 	args := slices.Clone(f.args)
 	args[f.idx] = err
 	return &singleFormatted{
@@ -135,6 +138,16 @@ func (f *multiFormatted) Rewrap(errs ...error) error {
 	if len(errs) != len(f.idxs) {
 		return Join(errs...)
 	}
+	changed := false
+	for i, idx := range f.idxs {
+		if errs[i] != f.args[idx] {
+			changed = true
+			break
+		}
+	}
+	if !changed {
+		return f
+	}
 	args := slices.Clone(f.args)
 	for i, idx := range f.idxs {
 		args[idx] = errs[i]
@@ -161,6 +174,9 @@ func (w *wrapped) Unwrap() error {
 }
 
 func (w *wrapped) Rewrap(err error) error {
+	if err == w.err {
+		return w
+	}
 	return &wrapped{
 		err: err,
 		msg: w.msg,
@@ -185,6 +201,9 @@ func (s *stacked) Stack() []uintptr {
 }
 
 func (s *stacked) Rewrap(err error) error {
+	if err == s.err {
+		return s
+	}
 	return &stacked{
 		err:   err,
 		stack: s.stack,

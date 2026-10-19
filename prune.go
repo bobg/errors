@@ -18,32 +18,38 @@ func Prune(tree error, targets ...error) error {
 	if len(targets) == 0 {
 		return tree
 	}
-	switch tree := tree.(type) {
+	switch t := tree.(type) {
 	case Unwrapper:
-		u := tree.Unwrap()
-		if u == nil {
+		u := t.Unwrap()
+		if isSmallestMatch(tree, targets, u) {
 			return nil
+		}
+		if u == nil {
+			return tree
 		}
 		u = Prune(u, targets...)
 		if u == nil {
 			return nil
 		}
 
-		switch tree := tree.(type) {
+		switch t := tree.(type) {
 		case Rewrapper:
-			return tree.Rewrap(u)
+			return t.Rewrap(u)
 
 		case MultiRewrapper:
-			return tree.Rewrap(u)
+			return t.Rewrap(u)
 
 		default:
 			return u
 		}
 
 	case MultiUnwrapper:
-		uu := tree.Unwrap()
-		if len(uu) == 0 {
+		uu := t.Unwrap()
+		if isSmallestMatch(tree, targets, uu...) {
 			return nil
+		}
+		if len(uu) == 0 {
+			return tree
 		}
 
 		var newChildren []error
@@ -58,23 +64,40 @@ func Prune(tree error, targets ...error) error {
 			return nil
 		}
 
-		switch tree := tree.(type) {
+		switch t := tree.(type) {
 		case Rewrapper:
-			return tree.Rewrap(Join(newChildren...))
+			return t.Rewrap(Join(newChildren...))
 
 		case MultiRewrapper:
-			return tree.Rewrap(newChildren...)
+			return t.Rewrap(newChildren...)
 
 		default:
 			return Join(newChildren...)
 		}
 
 	default:
-		for _, target := range targets {
-			if Is(tree, target) {
-				return nil
-			}
+		if isSmallestMatch(tree, targets) {
+			return nil
 		}
 		return tree
 	}
+}
+
+func isSmallestMatch(tree error, targets []error, children ...error) bool {
+	for _, target := range targets {
+		if !Is(tree, target) {
+			continue
+		}
+		childMatches := false
+		for _, child := range children {
+			if Is(child, target) {
+				childMatches = true
+				break
+			}
+		}
+		if !childMatches {
+			return true
+		}
+	}
+	return false
 }
