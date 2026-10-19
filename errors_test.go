@@ -23,6 +23,19 @@ func TestAs(t *testing.T) {
 	}
 }
 
+func TestAsType(t *testing.T) {
+	e := errors.New("foo")
+
+	if _, ok := errors.AsType[*errors.Stacked](e); !ok {
+		t.Errorf("got %T, want *Stacked", e)
+	}
+
+	e2 := fmt.Errorf("bar")
+	if _, ok := errors.AsType[*errors.Stacked](e2); ok {
+		t.Errorf("fmt.Errorf error should not be *Stacked")
+	}
+}
+
 func TestIs(t *testing.T) {
 	e := errors.New("foo")
 	e2 := errors.Wrap(e, "bar")
@@ -95,7 +108,7 @@ func testNewf(t *testing.T, f func(string, ...any) error) {
 		e1 = errors.New("bar")
 		e2 = errors.New("baz")
 	)
-	e = errors.Newf("foo %d: %w, %w", 17, e1, e2)
+	e = f("foo %d: %w, %w", 17, e1, e2)
 	if e.Error() != "foo 17: bar, baz" {
 		t.Errorf("got %q, want %q", e.Error(), "foo 17: bar, baz")
 	}
@@ -103,6 +116,14 @@ func testNewf(t *testing.T, f func(string, ...any) error) {
 		t.Errorf("got false, want true")
 	}
 	if !errors.Is(e, e2) {
+		t.Errorf("got false, want true")
+	}
+
+	e = f("dup: %[1]w, %[1]w", e1)
+	if e.Error() != "dup: bar, bar" {
+		t.Errorf("got %q, want %q", e.Error(), "dup: bar, bar")
+	}
+	if !errors.Is(e, e1) {
 		t.Errorf("got false, want true")
 	}
 }
@@ -168,6 +189,11 @@ func TestWrapf(t *testing.T) {
 	}
 }
 
+type emptyStacker struct{}
+
+func (emptyStacker) Error() string    { return "empty stack" }
+func (emptyStacker) Stack() []uintptr { return nil }
+
 func TestStack(t *testing.T) {
 	if s := errors.Stack(nil); s != nil {
 		t.Errorf("got %v, want nil", s)
@@ -175,6 +201,10 @@ func TestStack(t *testing.T) {
 
 	if s := errors.Stack(fmt.Errorf("foo")); s != nil {
 		t.Errorf("got %v, want nil", s)
+	}
+
+	if s := errors.Stack(emptyStacker{}); len(s) != 0 {
+		t.Errorf("got %v, want empty", s)
 	}
 
 	e := errors.New("foo")
@@ -209,5 +239,39 @@ func TestStack(t *testing.T) {
 	ss := s.String()
 	if ok, _ := regexp.MatchString(`/errors_test\.go:\d+: github\.com/bobg/errors_test\.TestStack`, ss); !ok {
 		t.Error("got no match, want match")
+	}
+}
+
+func TestFrameString(t *testing.T) {
+	cases := []struct {
+		frame errors.Frame
+		want  string
+	}{
+		{
+			frame: errors.Frame{File: "foo.go", Line: 10, Function: "pkg.Fn"},
+			want:  "foo.go:10: pkg.Fn",
+		},
+		{
+			frame: errors.Frame{File: "foo.go", Function: "pkg.Fn"},
+			want:  "foo.go: pkg.Fn",
+		},
+		{
+			frame: errors.Frame{Function: "pkg.Fn"},
+			want:  "pkg.Fn",
+		},
+		{
+			frame: errors.Frame{File: "foo.go", Line: 10},
+			want:  "foo.go:10: (unknown function)",
+		},
+		{
+			frame: errors.Frame{},
+			want:  "(unknown)",
+		},
+	}
+
+	for _, tc := range cases {
+		if got := tc.frame.String(); got != tc.want {
+			t.Errorf("Frame(%+v).String() = %q, want %q", tc.frame, got, tc.want)
+		}
 	}
 }

@@ -71,4 +71,103 @@ func TestPrune(t *testing.T) {
 	if !errors.Is(got, b) || errors.Is(got, a) {
 		t.Errorf("unexpected Is results on %v", got)
 	}
+
+	// singleFormatted.Rewrap when child is unchanged
+	sf := errors.Newf("ctx: %w", a)
+	if got := errors.Prune(sf, b); got != sf {
+		t.Errorf("got %v, want %v", got, sf)
+	}
+
+	// multiFormatted.Rewrap when number of children changes, and when unchanged
+	mf := errors.Newf("ctx: %w, %w", a, b)
+	if got := errors.Prune(mf, c); got != mf {
+		t.Errorf("got %v, want %v", got, mf)
+	}
+	got = errors.Prune(mf, a)
+	if got == nil || got.Error() != "b" {
+		t.Errorf("got %v, want %q", got, "b")
+	}
+	if !errors.Is(got, b) || errors.Is(got, a) {
+		t.Errorf("unexpected Is results on %v", got)
+	}
+
+	// wrapped.Rewrap and stacked.Rewrap when child changes, plus leaf match in default branch
+	var (
+		plainA = fmt.Errorf("a")
+		plainB = fmt.Errorf("b")
+	)
+	ws := errors.Wrap(errors.Join(plainA, plainB), "x")
+	got = errors.Prune(ws, plainB)
+	if got == nil || got.Error() != "x: a" {
+		t.Errorf("got %v, want %q", got, "x: a")
+	}
+	if !errors.Is(got, plainA) || errors.Is(got, plainB) {
+		t.Errorf("unexpected Is results on %v", got)
+	}
+
+	// MultiUnwrapper matching target directly
+	if got := errors.Prune(j, j); got != nil {
+		t.Errorf("got %v, want nil", got)
+	}
+
+	// MultiUnwrapper with all children pruned
+	if got := errors.Prune(errors.Join(a, b), a, b); got != nil {
+		t.Errorf("got %v, want nil", got)
+	}
+
+	// Unwrapper returning nil
+	nu := nilUnwrapper{}
+	if got := errors.Prune(nu, a); got != nu {
+		t.Errorf("got %v, want %v", got, nu)
+	}
+
+	// Unwrapper implementing MultiRewrapper
+	sumr := singleUnwrapMultiRewrap{err: errors.Join(a, b)}
+	got = errors.Prune(sumr, b)
+	if got == nil || got.Error() != "sumr: a" {
+		t.Errorf("got %v, want %q", got, "sumr: a")
+	}
+
+	// MultiUnwrapper returning empty slice
+	emu := emptyMultiUnwrapper{}
+	if got := errors.Prune(emu, a); got != emu {
+		t.Errorf("got %v, want %v", got, emu)
+	}
+
+	// MultiUnwrapper implementing Rewrapper
+	musr := multiUnwrapSingleRewrap{errs: []error{a, b}}
+	got = errors.Prune(musr, b)
+	if got == nil || got.Error() != "musr: a" {
+		t.Errorf("got %v, want %q", got, "musr: a")
+	}
+}
+
+type nilUnwrapper struct{}
+
+func (nilUnwrapper) Error() string { return "nil unwrapper" }
+func (nilUnwrapper) Unwrap() error { return nil }
+
+type singleUnwrapMultiRewrap struct {
+	err error
+}
+
+func (s singleUnwrapMultiRewrap) Error() string { return "sumr: " + s.err.Error() }
+func (s singleUnwrapMultiRewrap) Unwrap() error { return s.err }
+func (s singleUnwrapMultiRewrap) Rewrap(errs ...error) error {
+	return singleUnwrapMultiRewrap{err: errors.Join(errs...)}
+}
+
+type emptyMultiUnwrapper struct{}
+
+func (emptyMultiUnwrapper) Error() string   { return "empty multi unwrapper" }
+func (emptyMultiUnwrapper) Unwrap() []error { return nil }
+
+type multiUnwrapSingleRewrap struct {
+	errs []error
+}
+
+func (m multiUnwrapSingleRewrap) Error() string   { return "musr: " + errors.Join(m.errs...).Error() }
+func (m multiUnwrapSingleRewrap) Unwrap() []error { return m.errs }
+func (m multiUnwrapSingleRewrap) Rewrap(err error) error {
+	return multiUnwrapSingleRewrap{errs: []error{err}}
 }
