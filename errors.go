@@ -22,6 +22,20 @@ func Errorf(format string, args ...any) error {
 	return addStack(errorf(format, args...))
 }
 
+// Errors formatted by fmt.Errorf with one or more %w verbs implement Unwrap() error or Unwrap() []error,
+// depending on whether one or multiple errors are wrapped.
+// To support Rewrap (for Prune) on errors created by Newf, Errorf, and Wrapf,
+// errorf wraps the result of fmt.Errorf in either singleFormatted or multiFormatted,
+// retaining the original format string and arguments.
+//
+// An argument list may contain multiple error values where only a subset are wrapped with %w
+// (for example, "%s: %w", err1, err2), or where positional verbs reorder them (for example, "%[2]w: %[1]v").
+// Rather than parsing the format string to figure out which arguments correspond to %w verbs,
+// Rewrap lazily calls taggedErrorf when a wrapped error actually changes.
+// taggedErrorf replaces every error in args with an indexedError recording its slice index,
+// passes those tagged args to fmt.Errorf, and unwraps the result to discover which arg indices
+// were captured by %w. It then substitutes the new error(s) at those indices and re-runs errorf.
+
 type indexedError struct {
 	idx int
 	err error
@@ -72,6 +86,9 @@ func hasErrorArg(args []any) bool {
 	return false
 }
 
+// taggedErrorf runs fmt.Errorf with all error arguments wrapped in indexedError,
+// allowing the caller to unwrap the resulting error and determine which positions
+// in args were wrapped via %w.
 func taggedErrorf(format string, args []any) error {
 	taggedArgs := make([]any, len(args))
 	for i, arg := range args {
@@ -84,6 +101,8 @@ func taggedErrorf(format string, args []any) error {
 	return fmt.Errorf(format, taggedArgs...)
 }
 
+// singleFormatted wraps an error produced by fmt.Errorf with a single %w verb,
+// retaining the format string and arguments so it can implement Rewrapper.
 type singleFormatted struct {
 	raw    unwrapperError
 	format string
@@ -109,6 +128,8 @@ func (f *singleFormatted) Rewrap(err error) error {
 	return errorf(f.format, args...)
 }
 
+// multiFormatted wraps an error produced by fmt.Errorf with multiple %w verbs,
+// retaining the format string and arguments so it can implement MultiRewrapper.
 type multiFormatted struct {
 	raw    multiUnwrapperError
 	format string
@@ -126,6 +147,9 @@ func (f *multiFormatted) Unwrap() []error {
 func (f *multiFormatted) Rewrap(errs ...error) error {
 	uu := f.raw.Unwrap()
 	if len(errs) != len(uu) {
+		// If the number of wrapped errors changed (e.g., one was pruned away entirely),
+		// the original format string can no longer be used with the same %w verbs,
+		// so fall back to Join.
 		return Join(errs...)
 	}
 	changed := false
