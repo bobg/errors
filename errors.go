@@ -31,7 +31,48 @@ func (e indexedError) Error() string {
 	return e.err.Error()
 }
 
+type unwrapperError interface {
+	error
+	Unwrapper
+}
+
+type multiUnwrapperError interface {
+	error
+	MultiUnwrapper
+}
+
 func errorf(format string, args ...any) error {
+	raw := fmt.Errorf(format, args...)
+
+	switch raw := raw.(type) {
+	case unwrapperError:
+		return &singleFormatted{
+			raw:    raw,
+			format: format,
+			args:   slices.Clone(args),
+		}
+
+	case multiUnwrapperError:
+		return &multiFormatted{
+			raw:    raw,
+			format: format,
+			args:   slices.Clone(args),
+		}
+	}
+
+	return raw
+}
+
+func hasErrorArg(args []any) bool {
+	for _, arg := range args {
+		if _, ok := arg.(error); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func taggedErrorf(format string, args []any) error {
 	taggedArgs := make([]any, len(args))
 	for i, arg := range args {
 		if err, ok := arg.(error); ok {
@@ -40,107 +81,56 @@ func errorf(format string, args ...any) error {
 			taggedArgs[i] = arg
 		}
 	}
-
-	var (
-		probe = fmt.Errorf(format, taggedArgs...)
-		raw   = fmt.Errorf(format, args...)
-	)
-
-	switch probe := probe.(type) {
-	case Unwrapper:
-		if ie, ok := probe.Unwrap().(indexedError); ok {
-			return &singleFormatted{
-				msg:    raw.Error(),
-				format: format,
-				args:   slices.Clone(args),
-				idx:    ie.idx,
-			}
-		}
-
-	case MultiUnwrapper:
-		uu := probe.Unwrap()
-		idxs := make([]int, 0, len(uu))
-		for _, u := range uu {
-			if ie, ok := u.(indexedError); ok {
-				idxs = append(idxs, ie.idx)
-			}
-		}
-		if len(idxs) == 1 {
-			return &singleFormatted{
-				msg:    raw.Error(),
-				format: format,
-				args:   slices.Clone(args),
-				idx:    idxs[0],
-			}
-		}
-		if len(idxs) > 1 {
-			return &multiFormatted{
-				msg:    raw.Error(),
-				format: format,
-				args:   slices.Clone(args),
-				idxs:   idxs,
-			}
-		}
-	}
-
-	return raw
+	return fmt.Errorf(format, taggedArgs...)
 }
 
 type singleFormatted struct {
-	msg    string
+	raw    unwrapperError
 	format string
 	args   []any
-	idx    int
 }
 
 func (f *singleFormatted) Error() string {
-	return f.msg
+	return f.raw.Error()
 }
 
 func (f *singleFormatted) Unwrap() error {
-	return f.args[f.idx].(error)
+	return f.raw.Unwrap()
 }
 
 func (f *singleFormatted) Rewrap(err error) error {
-	if err == f.args[f.idx] {
+	if err == f.raw.Unwrap() {
 		return f
 	}
+	probe := taggedErrorf(f.format, f.args).(Unwrapper)
+	idx := probe.Unwrap().(indexedError).idx
 	args := slices.Clone(f.args)
-	args[f.idx] = err
-	return &singleFormatted{
-		msg:    fmt.Errorf(f.format, args...).Error(),
-		format: f.format,
-		args:   args,
-		idx:    f.idx,
-	}
+	args[idx] = err
+	return errorf(f.format, args...)
 }
 
 type multiFormatted struct {
-	msg    string
+	raw    multiUnwrapperError
 	format string
 	args   []any
-	idxs   []int
 }
 
 func (f *multiFormatted) Error() string {
-	return f.msg
+	return f.raw.Error()
 }
 
 func (f *multiFormatted) Unwrap() []error {
-	errs := make([]error, len(f.idxs))
-	for i, idx := range f.idxs {
-		errs[i] = f.args[idx].(error)
-	}
-	return errs
+	return f.raw.Unwrap()
 }
 
 func (f *multiFormatted) Rewrap(errs ...error) error {
-	if len(errs) != len(f.idxs) {
+	uu := f.raw.Unwrap()
+	if len(errs) != len(uu) {
 		return Join(errs...)
 	}
 	changed := false
-	for i, idx := range f.idxs {
-		if errs[i] != f.args[idx] {
+	for i, u := range uu {
+		if errs[i] != u {
 			changed = true
 			break
 		}
@@ -148,16 +138,12 @@ func (f *multiFormatted) Rewrap(errs ...error) error {
 	if !changed {
 		return f
 	}
+	probe := taggedErrorf(f.format, f.args).(MultiUnwrapper)
 	args := slices.Clone(f.args)
-	for i, idx := range f.idxs {
-		args[idx] = errs[i]
+	for i, u := range probe.Unwrap() {
+		args[u.(indexedError).idx] = errs[i]
 	}
-	return &multiFormatted{
-		msg:    fmt.Errorf(f.format, args...).Error(),
-		format: f.format,
-		args:   args,
-		idxs:   f.idxs,
-	}
+	return errorf(f.format, args...)
 }
 
 type wrapped struct {
@@ -210,9 +196,13 @@ func (s *stacked) Rewrap(err error) error {
 	}
 }
 
+type stackerError interface {
+	error
+	Stacker
+}
+
 func addStack(err error) error {
-	var s Stacker
-	if As(err, &s) {
+	if _, ok := AsType[stackerError](err); ok {
 		// err already contains a stack trace, no need to further decorate it
 		return err
 	}
@@ -244,8 +234,8 @@ func Stack(e error) Frames {
 		return nil
 	}
 
-	var s Stacker
-	if !As(e, &s) {
+	s, ok := AsType[stackerError](e)
+	if !ok {
 		return nil
 	}
 
@@ -335,6 +325,13 @@ func Wrap(err error, msg string) error {
 func Wrapf(err error, format string, args ...any) error {
 	if err == nil {
 		return nil
+	}
+	if !hasErrorArg(args) {
+		f := format
+		return addStack(&wrapped{
+			err: err,
+			msg: fmt.Sprintf(f, args...),
+		})
 	}
 	return addStack(errorf(format+": %w", append(args, err)...))
 }

@@ -174,6 +174,9 @@ func TestWrapf(t *testing.T) {
 	}
 
 	e = errors.New("foo")
+	if got := errors.Wrapf(e, "bar %d", 17); got.Error() != "bar 17: foo" {
+		t.Errorf("got %q, want %q", got.Error(), "bar 17: foo")
+	}
 
 	e2 := errors.New("bar")
 	e3 := errors.Wrapf(e, "baz %d: %w", 17, e2)
