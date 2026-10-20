@@ -1,7 +1,6 @@
 # Errors - drop-in replacement for the stdlib errors package that adds wrapping and call stacks
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/bobg/errors.svg)](https://pkg.go.dev/github.com/bobg/errors)
-[![Go Report Card](https://goreportcard.com/badge/github.com/bobg/errors)](https://goreportcard.com/report/github.com/bobg/errors)
 [![Tests](https://github.com/bobg/errors/actions/workflows/go.yml/badge.svg)](https://github.com/bobg/errors/actions/workflows/go.yml)
 [![Coverage Status](https://coveralls.io/repos/github/bobg/errors/badge.svg?branch=master)](https://coveralls.io/github/bobg/errors?branch=master)
 
