@@ -1,5 +1,7 @@
 package errors
 
+import "slices"
+
 // Prune returns a copy of the error tree rooted at tree,
 // minus the smallest subtrees matching any of the targets.
 //
@@ -18,86 +20,61 @@ func Prune(tree error, targets ...error) error {
 	if len(targets) == 0 {
 		return tree
 	}
+	if slices.Contains(targets, tree) {
+		return nil
+	}
+
 	switch t := tree.(type) {
 	case Unwrapper:
-		u := t.Unwrap()
-		if isSmallestMatch(tree, targets, u) {
-			return nil
-		}
-		if u == nil {
-			return tree
-		}
-		u = Prune(u, targets...)
-		if u == nil {
+		p := Prune(t.Unwrap(), targets...)
+		if p == nil {
 			return nil
 		}
 
 		switch t := tree.(type) {
 		case Rewrapper:
-			return t.Rewrap(u)
+			return t.Rewrap(p)
 
 		case MultiRewrapper:
-			return t.Rewrap(u)
+			return t.Rewrap(p)
 
 		default:
-			return u
+			return p
 		}
 
 	case MultiUnwrapper:
-		uu := t.Unwrap()
-		if isSmallestMatch(tree, targets, uu...) {
-			return nil
-		}
-		if len(uu) == 0 {
-			return tree
-		}
+		var (
+			uu     = t.Unwrap()
+			pruned = make([]error, 0, len(uu))
+		)
 
-		var newChildren []error
-		for _, u := range uu {
-			u = Prune(u, targets...)
-			if u != nil {
-				newChildren = append(newChildren, u)
+		for _, ue := range uu {
+			if ue == nil {
+				continue
 			}
+			p := Prune(ue, targets...)
+			if p == nil {
+				continue
+			}
+			pruned = append(pruned, p)
 		}
 
-		if len(newChildren) == 0 {
+		if len(pruned) == 0 {
 			return nil
 		}
 
 		switch t := tree.(type) {
 		case Rewrapper:
-			return t.Rewrap(Join(newChildren...))
+			return t.Rewrap(Join(pruned...))
 
 		case MultiRewrapper:
-			return t.Rewrap(newChildren...)
+			return t.Rewrap(pruned...)
 
 		default:
-			return Join(newChildren...)
+			return Join(pruned...)
 		}
 
 	default:
-		if isSmallestMatch(tree, targets) {
-			return nil
-		}
 		return tree
 	}
-}
-
-func isSmallestMatch(tree error, targets []error, children ...error) bool {
-	for _, target := range targets {
-		if !Is(tree, target) {
-			continue
-		}
-		childMatches := false
-		for _, child := range children {
-			if Is(child, target) {
-				childMatches = true
-				break
-			}
-		}
-		if !childMatches {
-			return true
-		}
-	}
-	return false
 }

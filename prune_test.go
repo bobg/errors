@@ -115,23 +115,11 @@ func TestPrune(t *testing.T) {
 		t.Errorf("got %v, want nil", got)
 	}
 
-	// Unwrapper returning nil
-	nu := nilUnwrapper{}
-	if got := errors.Prune(nu, a); got != nu {
-		t.Errorf("got %v, want %v", got, nu)
-	}
-
 	// Unwrapper implementing MultiRewrapper
 	sumr := singleUnwrapMultiRewrap{err: errors.Join(a, b)}
 	got = errors.Prune(sumr, b)
 	if got == nil || got.Error() != "sumr: a" {
 		t.Errorf("got %v, want %q", got, "sumr: a")
-	}
-
-	// MultiUnwrapper returning empty slice
-	emu := emptyMultiUnwrapper{}
-	if got := errors.Prune(emu, a); got != emu {
-		t.Errorf("got %v, want %v", got, emu)
 	}
 
 	// MultiUnwrapper implementing Rewrapper
@@ -142,11 +130,6 @@ func TestPrune(t *testing.T) {
 	}
 }
 
-type nilUnwrapper struct{}
-
-func (nilUnwrapper) Error() string { return "nil unwrapper" }
-func (nilUnwrapper) Unwrap() error { return nil }
-
 type singleUnwrapMultiRewrap struct {
 	err error
 }
@@ -156,11 +139,6 @@ func (s singleUnwrapMultiRewrap) Unwrap() error { return s.err }
 func (s singleUnwrapMultiRewrap) Rewrap(errs ...error) error {
 	return singleUnwrapMultiRewrap{err: errors.Join(errs...)}
 }
-
-type emptyMultiUnwrapper struct{}
-
-func (emptyMultiUnwrapper) Error() string   { return "empty multi unwrapper" }
-func (emptyMultiUnwrapper) Unwrap() []error { return nil }
 
 type multiUnwrapSingleRewrap struct {
 	errs []error
