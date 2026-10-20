@@ -115,23 +115,3 @@ func TestPrune(t *testing.T) {
 		t.Errorf("got %v, want nil", got)
 	}
 }
-
-type singleUnwrapMultiRewrap struct {
-	err error
-}
-
-func (s singleUnwrapMultiRewrap) Error() string { return "sumr: " + s.err.Error() }
-func (s singleUnwrapMultiRewrap) Unwrap() error { return s.err }
-func (s singleUnwrapMultiRewrap) Rewrap(errs ...error) error {
-	return singleUnwrapMultiRewrap{err: errors.Join(errs...)}
-}
-
-type multiUnwrapSingleRewrap struct {
-	errs []error
-}
-
-func (m multiUnwrapSingleRewrap) Error() string   { return "musr: " + errors.Join(m.errs...).Error() }
-func (m multiUnwrapSingleRewrap) Unwrap() []error { return m.errs }
-func (m multiUnwrapSingleRewrap) Rewrap(err error) error {
-	return multiUnwrapSingleRewrap{errs: []error{err}}
-}
