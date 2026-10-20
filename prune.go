@@ -7,7 +7,7 @@ package errors
 // Prune(Wrap(a, x), a) returns nil.
 //
 // Normally, Prune(Wrap(a, x), b) returns a
-// (when !Is(a, b)),
+// (when a is not b),
 // losing the wrapping info x.
 // But if Wrap(a, x) is a [Rewrapper] or a [MultiRewrapper],
 // then the wrapping info is preserved.
