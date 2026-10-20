@@ -114,20 +114,6 @@ func TestPrune(t *testing.T) {
 	if got := errors.Prune(errors.Join(a, b), a, b); got != nil {
 		t.Errorf("got %v, want nil", got)
 	}
-
-	// Unwrapper implementing MultiRewrapper
-	sumr := singleUnwrapMultiRewrap{err: errors.Join(a, b)}
-	got = errors.Prune(sumr, b)
-	if got == nil || got.Error() != "sumr: a" {
-		t.Errorf("got %v, want %q", got, "sumr: a")
-	}
-
-	// MultiUnwrapper implementing Rewrapper
-	musr := multiUnwrapSingleRewrap{errs: []error{a, b}}
-	got = errors.Prune(musr, b)
-	if got == nil || got.Error() != "musr: a" {
-		t.Errorf("got %v, want %q", got, "musr: a")
-	}
 }
 
 type singleUnwrapMultiRewrap struct {

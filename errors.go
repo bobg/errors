@@ -45,28 +45,18 @@ func (e indexedError) Error() string {
 	return e.err.Error()
 }
 
-type unwrapperError interface {
-	error
-	Unwrapper
-}
-
-type multiUnwrapperError interface {
-	error
-	MultiUnwrapper
-}
-
 func errorf(format string, args ...any) error {
 	raw := fmt.Errorf(format, args...)
 
 	switch raw := raw.(type) {
-	case unwrapperError:
+	case Unwrapper:
 		return &singleFormatted{
 			raw:    raw,
 			format: format,
 			args:   slices.Clone(args),
 		}
 
-	case multiUnwrapperError:
+	case MultiUnwrapper:
 		return &multiFormatted{
 			raw:    raw,
 			format: format,
@@ -104,7 +94,7 @@ func taggedErrorf(format string, args []any) error {
 // singleFormatted wraps an error produced by fmt.Errorf with a single %w verb,
 // retaining the format string and arguments so it can implement Rewrapper.
 type singleFormatted struct {
-	raw    unwrapperError
+	raw    Unwrapper
 	format string
 	args   []any
 }
@@ -131,7 +121,7 @@ func (f *singleFormatted) Rewrap(err error) error {
 // multiFormatted wraps an error produced by fmt.Errorf with multiple %w verbs,
 // retaining the format string and arguments so it can implement MultiRewrapper.
 type multiFormatted struct {
-	raw    multiUnwrapperError
+	raw    MultiUnwrapper
 	format string
 	args   []any
 }
