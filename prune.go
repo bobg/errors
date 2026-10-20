@@ -1,7 +1,7 @@
 package errors
 
 // Prune returns a copy of the error tree rooted at tree,
-// minus the smallest subtrees matching (via [Is]) any of the targets.
+// minus the smallest subtrees matching any of the targets.
 //
 // So, for example, Prune(Join(a, b, c), b) returns Join(a, c).
 // Prune(Wrap(a, x), a) returns nil.
