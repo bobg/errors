@@ -5,51 +5,277 @@ package errors
 import (
 	"fmt"
 	"runtime"
+	"slices"
 	"strings"
 )
 
 // Newf creates a new error with the given format string and arguments,
 // formatted as with [fmt.Errorf].
-// The result is a wrapped error containing the message and a stack trace.
+// The result is a wrapped error containing the message
+// and a stack trace from the point at which Newf was called.
 // The format specifier %w works as in [fmt.Errorf].
 func Newf(format string, args ...any) error {
-	return dowrap(fmt.Errorf(format, args...))
+	return addStack(errorf(format, args...))
 }
 
 // Errorf is a synonym for [Newf].
 func Errorf(format string, args ...any) error {
-	return Newf(format, args...)
+	return addStack(errorf(format, args...))
+}
+
+// Errors formatted by fmt.Errorf with one or more %w verbs implement [Unwrapper] or [MultiUnwrapper],
+// depending on whether one or multiple errors are wrapped.
+// To support [Rewrap] (for [Prune]) on errors created by [Newf], [Errorf], and [Wrapf],
+// errorf wraps the result of fmt.Errorf in either singleFormatted or multiFormatted,
+// retaining the original format string and arguments.
+//
+// An argument list may contain multiple error values where only a subset are wrapped with %w
+// (for example, "%s: %w", err1, err2), or where positional verbs reorder them (for example, "%[2]w: %[1]v").
+// Rather than parsing the format string to figure out which arguments correspond to %w verbs,
+// Rewrap lazily calls taggedErrorf when a wrapped error actually changes.
+// taggedErrorf replaces every error in args with an indexedError recording its slice index,
+// passes those tagged args to fmt.Errorf, and unwraps the result to discover which arg indices
+// were captured by %w. It then substitutes the new error(s) at those indices and re-runs errorf.
+
+type indexedError struct {
+	idx int
+	err error
+}
+
+func (e indexedError) Error() string {
+	return e.err.Error()
+}
+
+func errorf(format string, args ...any) error {
+	raw := fmt.Errorf(format, args...)
+
+	switch raw := raw.(type) {
+	case unwrapperError:
+		return &singleFormatted{
+			raw:    raw,
+			format: format,
+			args:   slices.Clone(args),
+		}
+
+	case multiUnwrapperError:
+		return &multiFormatted{
+			raw:    raw,
+			format: format,
+			args:   slices.Clone(args),
+		}
+	}
+
+	return raw
+}
+
+func hasErrorArg(args []any) bool {
+	for _, arg := range args {
+		if _, ok := arg.(error); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// taggedErrorf runs fmt.Errorf with all error arguments wrapped in indexedError,
+// allowing the caller to unwrap the resulting error and determine which positions
+// in args were wrapped via %w.
+func taggedErrorf(format string, args []any) error {
+	taggedArgs := make([]any, len(args))
+	for i, arg := range args {
+		if err, ok := arg.(error); ok {
+			taggedArgs[i] = indexedError{idx: i, err: err}
+		} else {
+			taggedArgs[i] = arg
+		}
+	}
+	return fmt.Errorf(format, taggedArgs...)
+}
+
+// singleFormatted wraps an error produced by fmt.Errorf with a single %w verb,
+// retaining the format string and arguments so it can implement [Rewrapper].
+type singleFormatted struct {
+	raw    unwrapperError
+	format string
+	args   []any
+}
+
+type unwrapperError interface {
+	error
+	Unwrapper
+}
+
+func (f *singleFormatted) Error() string {
+	return f.raw.Error()
+}
+
+func (f *singleFormatted) Unwrap() error {
+	return f.raw.Unwrap()
+}
+
+func (f *singleFormatted) Rewrap(errs ...error) error {
+	err := maybeJoin(errs...)
+
+	if err == f.raw.Unwrap() {
+		return f
+	}
+
+	var (
+		probe = taggedErrorf(f.format, f.args).(Unwrapper)
+		idx   = probe.Unwrap().(indexedError).idx
+		args  = slices.Clone(f.args)
+	)
+
+	args[idx] = err
+	return errorf(f.format, args...)
+}
+
+// multiFormatted wraps an error produced by fmt.Errorf with multiple %w verbs,
+// retaining the format string and arguments so it can implement [Rewrapper].
+type multiFormatted struct {
+	raw    multiUnwrapperError
+	format string
+	args   []any
+}
+
+type multiUnwrapperError interface {
+	error
+	MultiUnwrapper
+}
+
+func (f *multiFormatted) Error() string {
+	return f.raw.Error()
+}
+
+func (f *multiFormatted) Unwrap() []error {
+	return f.raw.Unwrap()
+}
+
+func (f *multiFormatted) Rewrap(errs ...error) error {
+	uu := f.raw.Unwrap()
+	if len(errs) != len(uu) {
+		// If the number of wrapped errors changed (e.g., one was pruned away entirely),
+		// the original format string can no longer be used with the same %w verbs,
+		// so fall back to Join.
+		return Join(errs...)
+	}
+	changed := false
+	for i, u := range uu {
+		if errs[i] != u {
+			changed = true
+			break
+		}
+	}
+	if !changed {
+		return f
+	}
+	probe := taggedErrorf(f.format, f.args).(MultiUnwrapper)
+	args := slices.Clone(f.args)
+	for i, u := range probe.Unwrap() {
+		args[u.(indexedError).idx] = errs[i]
+	}
+	return errorf(f.format, args...)
 }
 
 type wrapped struct {
-	err   error // This can be nil, in which case msg is the entire error message.
-	stack []uintptr
+	err error
+	msg string
+}
+
+func (w *wrapped) Error() string {
+	return w.msg + ": " + w.err.Error()
 }
 
 func (w *wrapped) Unwrap() error {
 	return w.err
 }
 
-func (w *wrapped) Error() string {
-	return w.err.Error()
+func (w *wrapped) Rewrap(errs ...error) error {
+	err := maybeJoin(errs...)
+
+	if err == w.err {
+		return w
+	}
+	return &wrapped{
+		err: err,
+		msg: w.msg,
+	}
 }
 
-// Stack implements the [Stacker] interface.
-func (w *wrapped) Stack() []uintptr {
-	return w.stack
+type stacked struct {
+	err   error
+	stack []uintptr
 }
 
-func dowrap(err error) error {
-	var s Stacker
-	if As(err, &s) {
+func (s *stacked) Error() string {
+	return s.err.Error()
+}
+
+func (s *stacked) Unwrap() error {
+	return s.err
+}
+
+func (s *stacked) Stack() []uintptr {
+	return s.stack
+}
+
+func (s *stacked) Rewrap(errs ...error) error {
+	err := maybeJoin(errs...)
+
+	if err == s.err {
+		return s
+	}
+
+	return &stacked{
+		err:   err,
+		stack: s.stack,
+	}
+}
+
+// If errs is empty or contains only nils,
+// return nil.
+// If it contains a single non-nil element,
+// return that.
+// Otherwise use [Join] to combine the errors.
+func maybeJoin(errs ...error) error {
+	var (
+		n   int
+		err error
+	)
+
+	for _, e := range errs {
+		if e == nil {
+			continue
+		}
+		if n > 0 {
+			return Join(errs...)
+		}
+		err = e
+		n++
+	}
+
+	return err
+}
+
+type stackerError interface {
+	error
+	Stacker
+}
+
+func addStack(err error) error {
+	if _, ok := AsType[stackerError](err); ok {
 		// err already contains a stack trace, no need to further decorate it
 		return err
 	}
 
 	const maxdepth = 32
 	var pcs [maxdepth]uintptr
-	n := runtime.Callers(3, pcs[:]) // 3 skips runtime.Callers, dowrap (this function), and the Wrap/Wrapf/New/Newf call that got us here.
-	return &wrapped{
+
+	// 3 skips runtime.Callers, addStack (this function),
+	// and the Wrap/Wrapf/New/Newf/Errorf call that got us here.
+	n := runtime.Callers(3, pcs[:])
+
+	return &stacked{
 		err:   err,
 		stack: pcs[:n],
 	}
@@ -69,8 +295,8 @@ func Stack(e error) Frames {
 		return nil
 	}
 
-	var s Stacker
-	if !As(e, &s) {
+	s, ok := AsType[stackerError](e)
+	if !ok {
 		return nil
 	}
 
@@ -139,20 +365,20 @@ func (f Frame) String() string {
 
 // Wrap creates a wrapped error.
 // It wraps the given error and attaches the given message.
-// It may also attach a stack trace,
-// but only if err doesn't already contain one.
+// If err does not already contain a stack trace,
+// one is added from the point at which Wrap was called.
 // If err is nil, Wrap returns nil.
 func Wrap(err error, msg string) error {
 	if err == nil {
 		return nil
 	}
-	return dowrap(fmt.Errorf("%s: %w", msg, err))
+	return addStack(&wrapped{err: err, msg: msg})
 }
 
 // Wrapf creates a wrapped error.
 // It wraps the given error and attaches the message that results from formatting format with args.
-// It may also attach a stack trace,
-// but only if err doesn't already contain one.
+// If err does not already contain a stack trace,
+// one is added from the point at which Wrap was called.
 // The format string may include %w specifiers, which work as in [fmt.Errorf].
 // If any errors included via %w include a stack trace,
 // that will also prevent Wrapf from including a new one.
@@ -161,8 +387,12 @@ func Wrapf(err error, format string, args ...any) error {
 	if err == nil {
 		return nil
 	}
-
-	format += ": %w"
-	args = append(args, err)
-	return dowrap(fmt.Errorf(format, args...))
+	if !hasErrorArg(args) {
+		f := format
+		return addStack(&wrapped{
+			err: err,
+			msg: fmt.Sprintf(f, args...),
+		})
+	}
+	return addStack(errorf(format+": %w", append(args, err)...))
 }

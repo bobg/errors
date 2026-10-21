@@ -90,8 +90,9 @@ func Join(errs ...error) error {
 
 // New returns an error that formats as the given text.
 // Each call to New returns a distinct error value even if the text is identical.
+// The resulting error also includes a stack trace from the point at which New was called.
 func New(text string) error {
-	return dowrap(errors.New(text))
+	return addStack(errors.New(text))
 }
 
 // Unwrap returns the result of calling the Unwrap method on err, if err's
