@@ -31,16 +31,10 @@ func Prune(tree error, targets ...error) error {
 			return nil
 		}
 
-		switch t := tree.(type) {
-		case Rewrapper:
+		if t, ok := tree.(Rewrapper); ok {
 			return t.Rewrap(p)
-
-		case MultiRewrapper:
-			return t.Rewrap(p)
-
-		default:
-			return p
 		}
+		return p
 
 	case MultiUnwrapper:
 		var (
@@ -63,16 +57,10 @@ func Prune(tree error, targets ...error) error {
 			return nil
 		}
 
-		switch t := tree.(type) {
-		case Rewrapper:
-			return t.Rewrap(Join(pruned...))
-
-		case MultiRewrapper:
+		if t, ok := tree.(Rewrapper); ok {
 			return t.Rewrap(pruned...)
-
-		default:
-			return Join(pruned...)
 		}
+		return Join(pruned...)
 
 	default:
 		return tree

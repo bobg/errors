@@ -14,16 +14,9 @@ type MultiUnwrapper interface {
 	Unwrap() []error
 }
 
-// Rewrapper is an optional interface that an [Unwrapper] may implement.
-// The Rewrap method wraps the given error with the same information that the original error wrapped its nested error.
+// Rewrapper is an optional interface that an [Unwrapper] or [MultiUnwrapper] may implement.
+// The Rewrap method wraps the given errors with the same information that the original error wrapped its nested error.
+// A type that wraps only a single nested error may implement Rewrap by calling [Join] on the given error list.
 type Rewrapper interface {
-	Unwrapper
-	Rewrap(error) error
-}
-
-// MultiRewrapper is an optional interface that a [MultiUnwrapper] may implement.
-// The Rewrap method wraps the given errors with the same information that the original error wrapped its nested errors.
-type MultiRewrapper interface {
-	MultiUnwrapper
 	Rewrap(...error) error
 }

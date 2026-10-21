@@ -92,7 +92,7 @@ func taggedErrorf(format string, args []any) error {
 }
 
 // singleFormatted wraps an error produced by fmt.Errorf with a single %w verb,
-// retaining the format string and arguments so it can implement Rewrapper.
+// retaining the format string and arguments so it can implement [Rewrapper].
 type singleFormatted struct {
 	raw    Unwrapper
 	format string
@@ -107,19 +107,25 @@ func (f *singleFormatted) Unwrap() error {
 	return f.raw.Unwrap()
 }
 
-func (f *singleFormatted) Rewrap(err error) error {
+func (f *singleFormatted) Rewrap(errs ...error) error {
+	err := maybeJoin(errs...)
+
 	if err == f.raw.Unwrap() {
 		return f
 	}
-	probe := taggedErrorf(f.format, f.args).(Unwrapper)
-	idx := probe.Unwrap().(indexedError).idx
-	args := slices.Clone(f.args)
+
+	var (
+		probe = taggedErrorf(f.format, f.args).(Unwrapper)
+		idx   = probe.Unwrap().(indexedError).idx
+		args  = slices.Clone(f.args)
+	)
+
 	args[idx] = err
 	return errorf(f.format, args...)
 }
 
 // multiFormatted wraps an error produced by fmt.Errorf with multiple %w verbs,
-// retaining the format string and arguments so it can implement MultiRewrapper.
+// retaining the format string and arguments so it can implement [Rewrapper].
 type multiFormatted struct {
 	raw    MultiUnwrapper
 	format string
@@ -173,7 +179,9 @@ func (w *wrapped) Unwrap() error {
 	return w.err
 }
 
-func (w *wrapped) Rewrap(err error) error {
+func (w *wrapped) Rewrap(errs ...error) error {
+	err := maybeJoin(errs...)
+
 	if err == w.err {
 		return w
 	}
@@ -200,14 +208,42 @@ func (s *stacked) Stack() []uintptr {
 	return s.stack
 }
 
-func (s *stacked) Rewrap(err error) error {
+func (s *stacked) Rewrap(errs ...error) error {
+	err := maybeJoin(errs...)
+
 	if err == s.err {
 		return s
 	}
+
 	return &stacked{
 		err:   err,
 		stack: s.stack,
 	}
+}
+
+// If errs is empty or contains only nils,
+// return nil.
+// If it contains a single non-nil element,
+// return that.
+// Otherwise use [Join] to combine the errors.
+func maybeJoin(errs ...error) error {
+	var (
+		n   int
+		err error
+	)
+
+	for _, e := range errs {
+		if e == nil {
+			continue
+		}
+		if n > 0 {
+			return Join(errs...)
+		}
+		err = e
+		n++
+	}
+
+	return err
 }
 
 type stackerError interface {
