@@ -3,14 +3,12 @@ package errors
 // Unwrapper is an optional interface that an error may implement.
 // The Unwrap method returns the nested error that this error wraps.
 type Unwrapper interface {
-	error
 	Unwrap() error
 }
 
 // Unwrapper is an optional interface that an error may implement.
 // The Unwrap method returns the list of errors that this error wraps.
 type MultiUnwrapper interface {
-	error
 	Unwrap() []error
 }
 

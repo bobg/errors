@@ -49,14 +49,14 @@ func errorf(format string, args ...any) error {
 	raw := fmt.Errorf(format, args...)
 
 	switch raw := raw.(type) {
-	case Unwrapper:
+	case unwrapperError:
 		return &singleFormatted{
 			raw:    raw,
 			format: format,
 			args:   slices.Clone(args),
 		}
 
-	case MultiUnwrapper:
+	case multiUnwrapperError:
 		return &multiFormatted{
 			raw:    raw,
 			format: format,
@@ -94,9 +94,14 @@ func taggedErrorf(format string, args []any) error {
 // singleFormatted wraps an error produced by fmt.Errorf with a single %w verb,
 // retaining the format string and arguments so it can implement [Rewrapper].
 type singleFormatted struct {
-	raw    Unwrapper
+	raw    unwrapperError
 	format string
 	args   []any
+}
+
+type unwrapperError interface {
+	error
+	Unwrapper
 }
 
 func (f *singleFormatted) Error() string {
@@ -127,9 +132,14 @@ func (f *singleFormatted) Rewrap(errs ...error) error {
 // multiFormatted wraps an error produced by fmt.Errorf with multiple %w verbs,
 // retaining the format string and arguments so it can implement [Rewrapper].
 type multiFormatted struct {
-	raw    MultiUnwrapper
+	raw    multiUnwrapperError
 	format string
 	args   []any
+}
+
+type multiUnwrapperError interface {
+	error
+	MultiUnwrapper
 }
 
 func (f *multiFormatted) Error() string {
