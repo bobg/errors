@@ -11,7 +11,8 @@ import (
 
 // Newf creates a new error with the given format string and arguments,
 // formatted as with [fmt.Errorf].
-// The result is a wrapped error containing the message and a stack trace.
+// The result is a wrapped error containing the message
+// and a stack trace from the point at which Newf was called.
 // The format specifier %w works as in [fmt.Errorf].
 func Newf(format string, args ...any) error {
 	return addStack(errorf(format, args...))
@@ -22,9 +23,9 @@ func Errorf(format string, args ...any) error {
 	return addStack(errorf(format, args...))
 }
 
-// Errors formatted by fmt.Errorf with one or more %w verbs implement Unwrap() error or Unwrap() []error,
+// Errors formatted by fmt.Errorf with one or more %w verbs implement [Unwrapper] or [MultiUnwrapper],
 // depending on whether one or multiple errors are wrapped.
-// To support Rewrap (for Prune) on errors created by Newf, Errorf, and Wrapf,
+// To support [Rewrap] (for [Prune]) on errors created by [Newf], [Errorf], and [Wrapf],
 // errorf wraps the result of fmt.Errorf in either singleFormatted or multiFormatted,
 // retaining the original format string and arguments.
 //
@@ -364,8 +365,8 @@ func (f Frame) String() string {
 
 // Wrap creates a wrapped error.
 // It wraps the given error and attaches the given message.
-// It may also attach a stack trace,
-// but only if err doesn't already contain one.
+// If err does not already contain a stack trace,
+// one is added from the point at which Wrap was called.
 // If err is nil, Wrap returns nil.
 func Wrap(err error, msg string) error {
 	if err == nil {
@@ -376,8 +377,8 @@ func Wrap(err error, msg string) error {
 
 // Wrapf creates a wrapped error.
 // It wraps the given error and attaches the message that results from formatting format with args.
-// It may also attach a stack trace,
-// but only if err doesn't already contain one.
+// If err does not already contain a stack trace,
+// one is added from the point at which Wrap was called.
 // The format string may include %w specifiers, which work as in [fmt.Errorf].
 // If any errors included via %w include a stack trace,
 // that will also prevent Wrapf from including a new one.
